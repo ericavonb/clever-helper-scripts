@@ -2,12 +2,6 @@
 
 USAGE="usage: remote [-h] [-r <remote>] [-t <type (fetch or push)> [-b <branch>] file"
 
-ERR=$(git remote -v 2>&1 >/dev/null)
-if [[ -n "$ERR" ]]; then
-    echo "ERROR: Not a git repository. Initialize a git repository with 'git init'."
-    exit 1
-fi
-
 while getopts ":hr:t:b:" opt; do
     case $opt in
         h)
@@ -34,6 +28,23 @@ while getopts ":hr:t:b:" opt; do
             ;;
     esac
 done
+
+DIR=`pwd`
+
+if [[ -n "$1" ]]; then
+    FILEDIR=`dirname $1`
+    FILENAME=`echo $1 | sed "s|$FILEDIR/||"`
+    cd "$FILEDIR"
+    FILEDIR=`pwd`
+    CURRENT_DIR="$DIR"
+    DIR="$FILEDIR/$FILENAME"
+fi
+
+ERR=$(git remote -v 2>&1 >/dev/null)
+if [[ -n "$ERR" ]]; then
+    echo "ERROR: Not a git repository. Initialize a git repository with 'git init'."
+    exit 1
+fi
 
 TYPE="fetch"
 REMOTES=`git remote -v | grep "$REMOTE" | grep "$TYPE"`
@@ -67,15 +78,11 @@ HOST=${HOST/#git@/"https://"}
 if [[ -z "$BRANCH" ]]; then
     BRANCH=$(git status | head -1 | sed 's/On branch //')
 fi
-DIR=`pwd`
-if [[ -n "$1" ]]; then
-    FILEDIR=`dirname $1`
-    FILENAME=`echo $1 | sed "s|$FILEDIR/||"`
-    cd "$FILEDIR"
-    FILEDIR=`pwd`
-    cd "$DIR"
-    DIR="$FILEDIR/$FILENAME"
+
+if [ -z "$CURRENT_DIR" ]; then
+    cd "$CURRENT_DIR"
 fi
+
 FILE=`echo "$DIR" | sed "s|$(git root)||"`
 
 URL="$HOST/$REPO/tree/$BRANCH$FILE"
