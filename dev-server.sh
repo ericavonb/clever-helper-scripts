@@ -25,7 +25,6 @@ display_help() {
 API="$API_PATH"
 VPN_IP="50.18.217.135"
 CHECK_VPN=true
-
 # defaults
 DB_NAME="jefff2"
 DB_ENV="dev"
@@ -98,6 +97,7 @@ DB_NAME=${1:-$DB_NAME}
 
 MONGO=${MONGO:-"mongodb-$DB_TYPE-$DB_NAME-$DB_ENV.ops.clever.com"}
 MONGO=${MONGO//--/-}
+KEY="$CLEVER_ADMIN_API_KEY"
 
 blue='\033[0;36m'
 clear='\033[0m'
@@ -113,5 +113,4 @@ if [ -n "$DEBUG" ]; then
     echo -e "  DEBUG${grey} is on for ${blue}$DEBUG${clear}."
 fi
 echo ""
-
 DEBUG=$DEBUG MONGO_URL=$MONGO CLEVER_ADMIN_API_KEY=$KEY API_PATH=$API npm run-script dev-server
