@@ -1,0 +1,82 @@
+#! /bin/bash
+
+USAGE="usage: remote [-h] [-r <remote>] [-t <type (fetch or push)> [-b <branch>] file"
+
+ERR=$(git remote -v 2>&1 >/dev/null)
+if [[ -n "$ERR" ]]; then
+    echo "ERROR: Not a git repository. Initialize a git repository with 'git init'."
+    exit 1
+fi
+
+while getopts ":hr:t:b:" opt; do
+    case $opt in
+        h)
+            echo "$USAGE"
+            echo "\nOpen the remote repository in the browser."
+            exit 0
+            ;;
+        r)
+            REMOTE="$OPTARG"
+            shift $(( OPTIND - 1 ));
+            ;;
+        t)
+            TYPE="$OPTARG"
+            shift $(( OPTIND - 1 ));
+            ;;
+        b)
+            BRANCH="$OPTARG"
+            shift $(( OPTIND - 1 ));
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG"
+            echo "$USAGE"
+            exit 1
+            ;;
+    esac
+done
+
+TYPE="fetch"
+REMOTES=`git remote -v | grep "$REMOTE" | grep "$TYPE"`
+
+# try with remote as set (or "") and type as set (or "fetch")
+# if there's more than one of these, try with remote as origin
+# if there's no origin, error with don't know
+
+case $(echo "$REMOTES\n" | wc -l | awk '{print $1}') in
+    0)
+        echo "ERROR: No remotes are set. Add a remote with 'git remote add <name> <url>'."
+        exit 1
+        ;;
+    1)
+        ;;
+    *)
+        REMOTES=`echo $REMOTES | grep origin`
+        if [[ -z "$REMOTES" ]]; then
+            echo "ERROR: not sure which remote to open. Specify a remote with '-r <remote>'"
+            exit 1
+        fi
+        ;;
+esac
+# remove .git suffix
+URL=$(echo $REMOTES | awk '{print $2}' | sed 's/\.git$//')
+
+HOST=${URL%%[:/]*}
+REPO=${URL##$HOST[:/]}
+HOST=${HOST/#git@/"https://"}
+
+if [[ -z "$BRANCH" ]]; then
+    BRANCH=$(git status | head -1 | sed 's/On branch //')
+fi
+DIR=`pwd`
+if [[ -n "$1" ]]; then
+    FILEDIR=`dirname $1`
+    FILENAME=`echo $1 | sed "s|$FILEDIR/||"`
+    cd "$FILEDIR"
+    FILEDIR=`pwd`
+    cd "$DIR"
+    DIR="$FILEDIR/$FILENAME"
+fi
+FILE=`echo "$DIR" | sed "s|$(git root)||"`
+
+URL="$HOST/$REPO/tree/$BRANCH$FILE"
+open "$URL"

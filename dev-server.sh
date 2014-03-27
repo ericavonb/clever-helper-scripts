@@ -1,28 +1,37 @@
 #! /bin/bash
 
 
-USAGE="Usage: dev-server [-h] [-p] [-t] [database]"
+USAGE="Usage: dev-server [--help] [-hpdlv] [-l PORT]  [database]"
 
 display_help() {
     echo "$USAGE"
     echo ""
     echo "Runs 'npm run-script dev-server' with the necessary environment variables."
     echo ""
-    echo "dev-server -p [database]   use production API and production database if none given"
-    echo "dev-server -t [database]   use the team API key"
-    echo "dev-server -h              display help message"
+    echo "  dev-server --help          display help message"
+    echo "  dev-server -h              display help message"
+    echo "  dev-server -d              put on debug for current repo ('DEBUG=<repo>:*)'"
+    echo "  dev-server -p [read/write] use a production database (default write)"
+    echo "  dev-server -l [port]       use localhost as database. use port [port] if given"
+    echo "  dev-server -v              don't require vpn"
     echo ""
-    echo "[database]                 database to use, if not a number then '{database}-dev' used"
-    echo "  ie 'MONGO_URL=mongodb{database}(-dev).ops.getclever.com'"
-    echo "  default: localhost, ie 'MONGO_URL=localhost'"
-    echo ""
+    echo "  [database]                 database name"
+    echo "                             MONGO_URL set to:"
+    echo "                               'mongodb-small-{database}-dev.ops.clever.com'"
+    echo "                             or if -p flag set:"
+    echo "                               'mongodb-{database or write}-prod.ops.clever.com'"
 }
 
-USE_API=0
 API="$API_PATH"
-KEY="$CLEVER_ADMIN_API_KEY"
+VPN_IP="50.18.217.135"
+CHECK_VPN=true
 
-while getopts ":-:hptdvwr" opt; do
+# defaults
+DB_NAME="jefff2"
+DB_ENV="dev"
+DB_TYPE="small"
+
+while getopts ":-:hdlpv" opt; do
     case $opt in
         -)
             if [ "$*" = "--help" ]; then
@@ -38,28 +47,23 @@ while getopts ":-:hptdvwr" opt; do
             display_help
             exit 0
             ;;
-        p)
-            DB="4"
-            API="https://api.getclever.com"
-            shift $(( OPTIND - 1 ));
-            ;;
-        t)
-            KEY="$CLEVER_TEAM_ADMIN_API_KEY"
-            shift $(( OPTIND - 1 ));
-            ;;
         d)
             DEBUG=`basename "$PWD"`":*"
             shift $(( OPTIND - 1 ));
             ;;
-        v)
-            MY_IP="$VPN_IP"
+        l)
+            shift $(( OPTIND - 1 ));
+            MONGO="localhost:${1:-27017}"
+            ;;
+        p)
+            DB_ENV="prod"
+            DB_NAME="write"
+            DB_TYPE=""
             shift $(( OPTIND - 1 ));
             ;;
-        w)
-            MONGO="mongodb-write-prod.ops.clever.com"
-            ;;
-        r)
-            MONGO="mongodb-read-prod.ops.clever.com"
+        v)
+            CHECK_VPN=false
+            shift $(( OPTIND - 1 ));
             ;;
         \?)
             echo "Invalid option: -$OPTARG"
@@ -69,45 +73,31 @@ while getopts ":-:hptdvwr" opt; do
     esac
 done
 
-MY_IP=`curl -s http://ipecho.net/plain ; echo`
-NOT_OK=`echo $MY_IP | sed 's|[0-9\.]*||'`
 
-if [[ -n "$NOT_OK" ]]; then
-    MY_IP=`curl -s http://checkip.dyndns.org | sed 's/[a-zA-Z/<> :]//g'`
-    NOT_OK=`echo $MY_IP | sed 's|[^0-9\.]||'`
+if [ $CHECK_VPN ]; then
 
-    if [[ -n "$NOT_OK" ]]; then
-        echo "on vpn"
-    else
-        VPN_IP="50.18.217.135"
+   # get ip from external source
+    MY_IP=`curl -s http://ipecho.net/plain ; echo`
 
-        if [ "$MY_IP" == "$VPN_IP" ] || [ "$MY_IP" == `host vpn.ops.clever.com | sed 's/vpn.ops.clever.com has address //'` ]; then
-            echo "on vpn"
-        else
-            echo "ERROR: Please connect to the VPN before starting the dev-server."
-            exit 1
+    # check if there's more than an ip in the response
+    if [[ -n $(echo $MY_IP | sed 's|[0-9\.]*||') ]]; then
+        # try again with a different service
+        MY_IP=`curl -s http://checkip.dyndns.org | sed 's/[a-zA-Z/<> :]//g'`
+        # check if there's more than an ip from second service
+        if [[ -n $(echo $MY_IP | sed 's|[0-9\.]*||') ]]; then
+            echo "Could not get external IP. Proceeding without VPN check."
         fi
-
     fi
-
-fi
-
-
-DB=${DB:-"$1"}
-
-if [ -z "$MONGO" ]; then
-    if [ -z "$DB" ]; then
-        MONGO="localhost"
-    else
-        MONGO="mongodb"`echo ${DB:-'jefff'}'-dev'`".ops.clever.com"
+    if [ "$MY_IP" != "$VPN_IP" ] && [ "$MY_IP" != `host vpn.ops.clever.com | sed 's/vpn.ops.clever.com has address //'` ]; then
+        echo "ERROR: Please connect to the VPN before starting the dev-server."
+        exit 1
     fi
 fi
 
-if [[ $(basename "$PWD") = "clever-api" ]]; then
-    cp package.json package_0.json
-    echo "not npm installing"
-    PCK=`sed 's/npm install &* //' package_0.json > package.json`
-fi
+DB_NAME=${1:-$DB_NAME}
+
+MONGO=${MONGO:-"mongodb-$DB_TYPE-$DB_NAME-$DB_ENV.ops.clever.com"}
+MONGO=${MONGO//--/-}
 
 blue='\033[0;36m'
 clear='\033[0m'
@@ -125,8 +115,3 @@ fi
 echo ""
 
 DEBUG=$DEBUG MONGO_URL=$MONGO CLEVER_ADMIN_API_KEY=$KEY API_PATH=$API npm run-script dev-server
-
-if [[ "$REPO" = "clever-api" ]]; then
-    cp package_0.json package.json
-    rm package_0.json
-fi
