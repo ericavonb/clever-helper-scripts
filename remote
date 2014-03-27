@@ -32,7 +32,7 @@ done
 DIR=`pwd`
 
 if [[ -n "$1" ]]; then
-    FILEDIR=`dirname $1`
+    FILEDIR=$(dirname `echo "$1"  | sed 's:\/$:/.:'`)
     FILENAME=`echo $1 | sed "s|$FILEDIR/||"`
     cd "$FILEDIR"
     FILEDIR=`pwd`
