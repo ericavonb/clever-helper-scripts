@@ -2,12 +2,22 @@
 
 USAGE="usage: remote [-h] [-r <remote>] [-t <type (fetch or push)> [-b <branch>] file"
 
-while getopts ":hr:t:b:" opt; do
+AllPRS=0
+
+while getopts ":hpPr:t:b:" opt; do
     case $opt in
         h)
             echo "$USAGE"
             echo "\nOpen the remote repository in the browser."
             exit 0
+            ;;
+        p)
+            PR=1
+            shift $(( OPTIND - 1 ));
+            ;;
+        P)
+            AllPRS=1
+            shift $(( OPTIND - 1 ));
             ;;
         r)
             REMOTE="$OPTARG"
@@ -32,7 +42,7 @@ done
 DIR=`pwd`
 
 if [[ -n "$1" ]]; then
-    FILEDIR=$(dirname `echo "$1"  | sed 's:\/$:/.:'`)
+    FILEDIR=$(dirname `ls -d -F "$1" | sed 's:\/$:/.:'`)
     FILENAME=`echo $1 | sed "s|$FILEDIR/||"`
     cd "$FILEDIR"
     FILEDIR=`pwd`
@@ -75,6 +85,11 @@ HOST=${URL%%[:/]*}
 REPO=${URL##$HOST[:/]}
 HOST=${HOST/#git@/"https://"}
 
+if [[ "$ALLPRS" == 1 ]]; then
+    open "$HOST/$REPO/pulls"
+    exit 0
+fi
+
 if [[ -z "$BRANCH" ]]; then
     BRANCH=$(git status | head -1 | sed 's/On branch //')
 fi
@@ -83,7 +98,17 @@ if [ -z "$CURRENT_DIR" ]; then
     cd "$CURRENT_DIR"
 fi
 
-FILE=`echo "$DIR" | sed "s|$(git root)||"`
+if [[ -n "$PR" ]]; then
+    PR=`git pr`
+    if [[ -z "$PR" ]]; then
+        URL_PATH="compare/$BRANCH?expand=1"
+    else
+        URL_PATH="pull/$PR"
+    fi
+else    
+        FILE=`echo "$DIR" | sed "s|$(git rev-parse --show-toplevel)||"`
+        URL_PATH="tree/$BRANCH$FILE"
+fi
 
-URL="$HOST/$REPO/tree/$BRANCH$FILE"
+URL="$HOST/$REPO/$URL_PATH"
 open "$URL"
