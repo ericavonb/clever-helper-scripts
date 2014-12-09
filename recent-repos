@@ -1,0 +1,33 @@
+# Show the n (or 10) most recent Repos
+
+
+
+N=`expr ${1:-"10"} + 1`
+N1=`expr $N + 1`
+
+FILLER=`ls -t | head -n $N1 | tail -n $N | sed 's/./\./g' | awk 'BEGIN {l=24; f = "...................."}{if (l < length($0)) { l=length($0); f = $0;}}END {print f}' 2> /dev/null`
+
+REPOS=$(color -b magenta " Recently Modified")
+
+for repo in $(ls -tF | head -n $N1 | tail -n $N | grep "/$" | sed 's:/$::'); do
+
+    DATE=`ls -got | grep " "$repo"$" | awk '{printf("%3s %02s %4s", $4, $5, $6)}'`
+    DATE=$(color -b grey "$DATE")
+
+    BRANCH=`$CLEVER_WORK_DIR/bin/branch.sh $repo`
+    if [[ "$BRANCH" = "master" ]]; then
+        BCOLOR="-b grey"
+    else
+        BCOLOR="yellow"
+    fi
+    BRANCH=$(color $BCOLOR $BRANCH)
+
+    FILL=`echo $FILLER | sed 's/'$(echo "$repo" | sed 's/././g')'//'`
+    FILL=$(color -b grey "$FILL")
+
+    REPO=$(color -b blue $repo)
+    BRANCH=`echo "$BRANCH" | awk '{printf("%-35s\n", $0)}'`
+    REPOS="$REPOS\n  $REPO $FILL$DATE  $BRANCH"
+done
+
+echo -e "$REPOS"
