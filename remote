@@ -2,21 +2,22 @@
 
 USAGE="usage: remote [-h] [-r <remote>] [-t <type (fetch or push)> [-b <branch>] file"
 
-AllPRS=0
+SHOW_ALL_PRS=""
+PR=""
 
-while getopts ":hpPr:t:b:" opt; do
+while getopts ":hPpr:t:b:m" opt; do
     case $opt in
         h)
             echo "$USAGE"
             echo "\nOpen the remote repository in the browser."
             exit 0
             ;;
-        p)
-            PR=1
+        P)
+            SHOW_ALL_PRS="Y"
             shift $(( OPTIND - 1 ));
             ;;
-        P)
-            AllPRS=1
+        p)
+            PR="Y"
             shift $(( OPTIND - 1 ));
             ;;
         r)
@@ -31,6 +32,10 @@ while getopts ":hpPr:t:b:" opt; do
             BRANCH="$OPTARG"
             shift $(( OPTIND - 1 ));
             ;;
+        m)
+            BRANCH="master"
+            shift $(( OPTIND - 1 ));
+            ;;
         \?)
             echo "Invalid option: -$OPTARG"
             echo "$USAGE"
@@ -43,6 +48,9 @@ DIR=`pwd`
 
 if [[ -n "$1" ]]; then
     FILEDIR=$(dirname `ls -d -F "$1" | sed 's:\/$:/.:'`)
+    if [[ $? != 0 ]]; then
+        exit 1
+    fi
     FILENAME=`echo $1 | sed "s|$FILEDIR/||"`
     cd "$FILEDIR"
     FILEDIR=`pwd`
@@ -85,30 +93,62 @@ HOST=${URL%%[:/]*}
 REPO=${URL##$HOST[:/]}
 HOST=${HOST/#git@/"https://"}
 
-if [[ "$ALLPRS" == 1 ]]; then
-    open "$HOST/$REPO/pulls"
-    exit 0
+# For -P option to open list of PRs (no branch name needed)
+if [[ -n "$SHOW_ALL_PRS" ]]; then
+    MSG="View all open pull requests."
+    URL_PATH="/pulls"
+
+else # other options
+
+    # use current branch if one wasn't specified
+    if [[ -z "$BRANCH" ]]; then
+         BRANCH=$(git status | head -1 | sed 's/On branch //')
+    fi
+
+    # if -p option set, find PR or get url to open one
+    if [[ -n "$PR" ]]; then
+        # Get PR number for current branch from source log
+        PR=`git log --source @^! HEAD --pretty=tformat:'%D' | awk 'BEGIN {RS=", "; FS="/";} /pr/ {print $3}'`
+
+        if [[ -n "$PR" ]]; then
+            # if PR exists, set url to open it
+            MSG="View PR#$PR, pull request to merge commits from '$BRANCH'."
+            URL_PATH="pull/$PR"
+        else
+            # set url to path where one can be opened
+            MSG="Open a new pull request for the branch '$BRANCH'."
+            URL_PATH="compare/$BRANCH?expand=1"
+        fi
+    else
+        # Open specified file (will be current dir)
+        FILE=`echo "$DIR" | sed "s|$(git rev-parse --show-toplevel)||"`
+        MSG="View file .$FILE"
+        URL_PATH="tree/$BRANCH$FILE"
+    fi
 fi
 
-if [[ -z "$BRANCH" ]]; then
-    BRANCH=$(git status | head -1 | sed 's/On branch //')
-fi
-
+# Go back to user's current directory
 if [ -z "$CURRENT_DIR" ]; then
     cd "$CURRENT_DIR"
 fi
 
-if [[ -n "$PR" ]]; then
-    PR=`git pr`
-    if [[ -z "$PR" ]]; then
-        URL_PATH="compare/$BRANCH?expand=1"
-    else
-        URL_PATH="pull/$PR"
-    fi
-else    
-        FILE=`echo "$DIR" | sed "s|$(git rev-parse --show-toplevel)||"`
-        URL_PATH="tree/$BRANCH$FILE"
-fi
-
 URL="$HOST/$REPO/$URL_PATH"
+_RESET="\033[0m"
+_UNDERLINE="\033[4m"
+_GREY="\033[0;37m"
+_BLUE="\033[0;34m"
+_GREEN="\033[0;32m"
+_RED="\033[0;31m"
+
+echo -e "Opening URL on remote..."
+echo -e "  $_GREY$MSG"
+echo -e "  $_BLUE$URL$_RESET"
+
 open "$URL"
+RES=$?
+if [[ "$RES" == 0 ]]; then
+    echo -e "$_GREEN""URL open.$_RESET"
+else
+    echo -e "$_RED""Failed to open URL.$_RESET"
+fi
+exit $RES
